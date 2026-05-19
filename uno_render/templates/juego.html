@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>UNO WebSockets</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/estilos.css') }}">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <style>
+        body { background-color: #2c3e50; color: white; font-family: sans-serif; text-align: center; }
+        .hidden { display: none !important; }
+        .btn { padding: 15px 30px; font-size: 18px; margin: 10px; cursor: pointer; border-radius: 8px; border: none; font-weight: bold; }
+        .mesa { background: rgba(0,0,0,0.2); padding: 20px; border-radius: 15px; margin: 20px auto; max-width: 600px; }
+        .carta-uno { display: inline-block; width: 80px; height: 120px; border-radius: 10px; background: white; color: black; line-height: 120px; font-size: 24px; font-weight: bold; border: 4px solid black; margin: 5px; cursor: pointer;}
+        .rojo { background-color: #ff5555; color: white; }
+        .azul { background-color: #5555ff; color: white; }
+        .verde { background-color: #55aa55; color: white; }
+        .amarillo { background-color: #ffaa00; color: white; }
+        .comodin { background-color: #222; color: white; }
+    </style>
+</head>
+<body>
+
+    <div id="pantalla-lobby">
+        <h1>Select your Seat</h1>
+        <button class="btn rojo" onclick="unirse(1)">Player 1</button>
+        <button class="btn azul" onclick="unirse(2)">Player 2</button>
+        <button class="btn verde" onclick="unirse(3)">Player 3</button>
+        <button class="btn amarillo" onclick="unirse(4)">Player 4</button>
+        
+        <div id="controles-p1" class="hidden">
+            <br><button class="btn" style="background: white; color: black;" onclick="iniciar()">START GAME</button>
+        </div>
+    </div>
+
+    <div id="pantalla-juego" class="hidden">
+        <h2 id="estado-turno">Waiting...</h2>
+        <button class="btn rojo hidden" id="btn-reiniciar" onclick="reiniciar()">RESTART SERVER</button>
+        
+        <div class="mesa">
+            <h3>Discard Pile</h3>
+            <div id="carta-mesa"></div>
+            <br>
+            <button class="btn azul" id="btn-robar" onclick="robar()">Draw Card</button>
+        </div>
+
+        <h3>Your Hand</h3>
+        <div id="mi-mano"></div>
+    </div>
+
+    <script>
+        const socket = io(); // Conectamos el walkie-talkie
+        let miNumeroJugador = null;
+
+        // Avisamos a Python de que acabamos de abrir la web
+        socket.emit('conectarse');
+
+        function unirse(num) {
+            miNumeroJugador = num;
+            socket.emit('unirse_jugador', { jugador_id: num });
+            if(num === 1) document.getElementById('controles-p1').classList.remove('hidden');
+        }
+
+        function iniciar() { socket.emit('iniciar_partida'); }
+        function robar() { socket.emit('robar_carta', { jugador_id: miNumeroJugador }); }
+        function reiniciar() { socket.emit('reiniciar_juego'); }
+
+        function jugarCarta(id_carta) {
+            let colorElegido = null;
+            if(id_carta.startsWith('W_')) {
+                colorElegido = prompt("Wild card! Choose: R, B, G, Y").toUpperCase();
+            }
+            socket.emit('jugar_carta', { jugador_id: miNumeroJugador, carta_id: id_carta, color_elegido: colorElegido });
+        }
+
+        // --- EL RECEPTOR DE TIEMPO REAL ---
+        // Esto se ejecuta mágicamente cada vez que Python grita un cambio
+        socket.on('actualizacion_estado', function(estado) {
+            
+            if (estado.estado === "lobby") {
+                document.getElementById('pantalla-lobby').classList.remove('hidden');
+                document.getElementById('pantalla-juego').classList.add('hidden');
+                return;
+            }
+
+            if (estado.estado === "jugando" && miNumeroJugador) {
+                document.getElementById('pantalla-lobby').classList.add('hidden');
+                document.getElementById('pantalla-juego').classList.remove('hidden');
+                
+                const esMiTurno = (estado.turno_actual === miNumeroJugador);
+                const txtEstado = document.getElementById('estado-turno');
+                
+                if (esMiTurno) {
+                    txtEstado.innerText = "IT'S YOUR TURN! (Color: " + estado.color_activo + ")";
+                    txtEstado.style.color = "#2ecc71";
+                    document.getElementById('btn-robar').classList.remove('hidden');
+                } else {
+                    txtEstado.innerText = "Player " + estado.turno_actual + " is playing... (Color: " + estado.color_activo + ")";
+                    txtEstado.style.color = "#f1c40f";
+                    document.getElementById('btn-robar').classList.add('hidden');
+                }
+
+                // Renderizar carta de la mesa (versión simplificada para el ejemplo)
+                if (estado.carta_mesa) {
+                    let partes = estado.carta_mesa.split('_');
+                    let colorCss = {'R':'rojo', 'B':'azul', 'G':'verde', 'Y':'amarillo', 'W':'comodin'}[partes[0]];
+                    document.getElementById('carta-mesa').innerHTML = `<div class="carta-uno ${colorCss}">${partes[1]}</div>`;
+                }
+
+                // Renderizar mi mano
+                let miManoHtml = '';
+                estado.manos[miNumeroJugador].forEach(carta => {
+                    let partes = carta.split('_');
+                    let colorCss = {'R':'rojo', 'B':'azul', 'G':'verde', 'Y':'amarillo', 'W':'comodin'}[partes[0]];
+                    let click = esMiTurno ? `onclick="jugarCarta('${carta}')"` : '';
+                    miManoHtml += `<div class="carta-uno ${colorCss}" ${click}>${partes[1]}</div>`;
+                });
+                document.getElementById('mi-mano').innerHTML = miManoHtml;
+                
+                // Botón de reinicio global
+                if(miNumeroJugador === 1) document.getElementById('btn-reiniciar').classList.remove('hidden');
+            }
+        });
+    </script>
+</body>
+</html>
