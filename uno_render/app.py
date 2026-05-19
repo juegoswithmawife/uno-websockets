@@ -1,10 +1,13 @@
+import eventlet
+eventlet.monkey_patch()
+
 from flask import Flask, render_template, request
 from flask_socketio import SocketIO, emit
 import random
-import eventlet
+#import eventlet
 
 # Configuración del servidor asíncrono no bloqueante
-eventlet.monkey_patch()
+#eventlet.monkey_patch()
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secreto_uno_2026'
