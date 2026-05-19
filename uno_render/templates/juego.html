@@ -6,120 +6,348 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/estilos.css') }}">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
     <style>
-        body { background-color: #2c3e50; color: white; font-family: sans-serif; text-align: center; }
+        .pantalla-inicio { text-align: center; color: white; padding-top: 50px; }
+        .btn-jugador { padding: 20px; font-size: 20px; margin: 10px; cursor: pointer; border-radius: 10px; border: none; font-weight: bold; }
         .hidden { display: none !important; }
-        .btn { padding: 15px 30px; font-size: 18px; margin: 10px; cursor: pointer; border-radius: 8px; border: none; font-weight: bold; }
-        .mesa { background: rgba(0,0,0,0.2); padding: 20px; border-radius: 15px; margin: 20px auto; max-width: 600px; }
-        .carta-uno { display: inline-block; width: 80px; height: 120px; border-radius: 10px; background: white; color: black; line-height: 120px; font-size: 24px; font-weight: bold; border: 4px solid black; margin: 5px; cursor: pointer;}
-        .rojo { background-color: #ff5555; color: white; }
-        .azul { background-color: #5555ff; color: white; }
-        .verde { background-color: #55aa55; color: white; }
-        .amarillo { background-color: #ffaa00; color: white; }
-        .comodin { background-color: #222; color: white; }
+        #controles-p1 { margin-top: 20px; border-top: 2px solid white; padding-top: 20px; text-align: center; }
+        
+        .mesa-central {
+            display: flex; 
+            justify-content: center; 
+            align-items: center;
+            gap: 60px; 
+            margin: 20px 0;
+            background: rgba(0,0,0,0.2);
+            padding: 30px;
+            border-radius: 20px;
+        }
+        
+        .caja-acciones { display: flex; flex-direction: column; gap: 15px; min-width: 200px; }
+
+        /* Modal de Color */
+        #modal-color {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85); z-index: 1000;
+            display: flex; justify-content: center; align-items: center;
+        }
+        .color-btn {
+            width: 70px; height: 70px; border-radius: 50%; border: 3px solid white;
+            cursor: pointer; transition: transform 0.2s;
+        }
+        .color-btn:hover { transform: scale(1.1); }
+
+        /* Animación para el banner de UNO */
+        @keyframes parpadeo { 
+            from { opacity: 0.8; transform: scale(1); } 
+            to { opacity: 1; transform: scale(1.03); } 
+        }
+
+        /* Pantalla de Fin de Juego */
+        #game-over-modal {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.95); z-index: 2000;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+        }
     </style>
 </head>
 <body>
 
-    <div id="pantalla-lobby">
-        <h1>Select your Seat</h1>
-        <button class="btn rojo" onclick="unirse(1)">Player 1</button>
-        <button class="btn azul" onclick="unirse(2)">Player 2</button>
-        <button class="btn verde" onclick="unirse(3)">Player 3</button>
-        <button class="btn amarillo" onclick="unirse(4)">Player 4</button>
-        
-        <div id="controles-p1" class="hidden">
-            <br><button class="btn" style="background: white; color: black;" onclick="iniciar()">START GAME</button>
+    <div id="game-over-modal" class="hidden">
+        <div id="game-over-text" style="font-size: 80px; font-weight: bold; margin-bottom: 40px; text-transform: uppercase; text-align: center;"></div>
+        <button id="btn-restart" class="btn-jugador hidden" onclick="reiniciarJuegoGlobal()" style="background: white; color: black; box-shadow: 0 0 20px white; padding: 20px 40px; font-size: 24px;">
+            ↻ PLAY AGAIN
+        </button>
+    </div>
+
+    <div id="modal-color" class="hidden">
+        <div style="background: #2c3e50; padding: 30px; border-radius: 15px; text-align: center; border: 2px solid white;">
+            <h2 style="color: white; margin-top: 0;">Choose Wild Color</h2>
+            <div style="display:flex; gap:15px; justify-content:center; margin-bottom: 20px;">
+                <button class="color-btn" style="background:#ff5555;" onclick="confirmarColor('R')"></button>
+                <button class="color-btn" style="background:#5555ff;" onclick="confirmarColor('B')"></button>
+                <button class="color-btn" style="background:#55aa55;" onclick="confirmarColor('G')"></button>
+                <button class="color-btn" style="background:#ffaa00;" onclick="confirmarColor('Y')"></button>
+            </div>
+            <button class="btn-jugador" onclick="cancelarColor()" style="background: #e74c3c; color: white; padding: 10px 20px; margin: 0; font-size: 16px;">Cancel</button>
         </div>
     </div>
 
-    <div id="pantalla-juego" class="hidden">
-        <h2 id="estado-turno">Waiting...</h2>
-        <button class="btn rojo hidden" id="btn-reiniciar" onclick="reiniciar()">RESTART SERVER</button>
+    <div id="seleccion-jugador" class="pantalla-inicio">
+        <h1>Select Your Seat</h1>
+        <button class="btn-jugador" onclick="unirse(1)" style="background:#ff5555; color: white;">Player 1</button>
+        <button class="btn-jugador" onclick="unirse(2)" style="background:#5555ff; color: white;">Player 2</button>
+        <button class="btn-jugador" onclick="unirse(3)" style="background:#55aa55; color: white;">Player 3</button>
+        <button class="btn-jugador" onclick="unirse(4)" style="background:#ffaa00; color: white;">Player 4</button>
+    </div>
+
+    <div id="mesa-juego" class="hidden">
         
-        <div class="mesa">
-            <h3>Discard Pile</h3>
-            <div id="carta-mesa"></div>
-            <br>
-            <button class="btn azul" id="btn-robar" onclick="robar()">Draw Card</button>
+        <h2 id="estado-turno" style="color: yellow; text-align: center; font-size: 28px; text-transform: uppercase;">
+            Waiting for game state...
+        </h2>
+        
+        <div id="controles-p1" class="hidden">
+            <button class="btn-jugador" onclick="iniciarPartida()" style="background: white; color: black; box-shadow: 0 0 15px white;">
+                ▶ ALL PLAYERS READY - START GAME
+            </button>
         </div>
 
-        <h3>Your Hand</h3>
-        <div id="mi-mano"></div>
+        <div id="uno-banner" class="hidden" style="background-color: #f39c12; color: white; padding: 15px; text-align: center; font-size: 24px; font-weight: bold; border-radius: 10px; margin: 10px auto; max-width: 600px; box-shadow: 0 0 15px #f39c12; animation: parpadeo 0.8s infinite alternate;">
+            🚨 PLAYER X HAS ONE CARD LEFT! 🚨
+        </div>
+
+        <div class="mesa-central">
+            <div id="zona-descarte" style="text-align: center;">
+                <h3 style="color: white; margin-top: 0;">Discard Pile</h3>
+                <div id="carta-en-juego-container" style="position: relative;"></div>
+            </div>
+            
+            <div id="acciones-turno" class="caja-acciones hidden">
+                <button class="btn-jugador" id="btn-robar" onclick="ejecutarAccion('robar')" style="background: #3498db; color: white; margin:0;">
+                    Draw Card
+                </button>
+                <button class="btn-jugador hidden" id="btn-pasar" onclick="ejecutarAccion('pasar')" style="background: #e74c3c; color: white; margin:0;">
+                    Pass Turn
+                </button>
+            </div>
+        </div>
+
+        <h3 style="color: white; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 10px;">Your Hand</h3>
+        <div class="galeria-cartas" id="mi-mano"></div>
     </div>
 
     <script>
-        const socket = io(); // Conectamos el walkie-talkie
+        const socket = io(); // Conexión activa al servidor Python
         let miNumeroJugador = null;
+        let esMiTurno = false;
+        let haRobadoEsteTurno = false;
+        let turnoAnterior = null;
+        let cartaPendienteComodin = null;
+        let juegoIniciadoFlag = false;
 
-        // Avisamos a Python de que acabamos de abrir la web
+        // Avisar que estamos conectados
         socket.emit('conectarse');
 
-        function unirse(num) {
-            miNumeroJugador = num;
-            socket.emit('unirse_jugador', { jugador_id: num });
-            if(num === 1) document.getElementById('controles-p1').classList.remove('hidden');
+        function unirse(numero) {
+            miNumeroJugador = numero;
+            socket.emit('unirse_jugador', {jugador_id: numero});
+            document.getElementById('seleccion-jugador').classList.add('hidden');
+            document.getElementById('mesa-juego').classList.remove('hidden');
+            if(numero === 1) document.getElementById('controles-p1').classList.remove('hidden');
         }
 
-        function iniciar() { socket.emit('iniciar_partida'); }
-        function robar() { socket.emit('robar_carta', { jugador_id: miNumeroJugador }); }
-        function reiniciar() { socket.emit('reiniciar_juego'); }
-
-        function jugarCarta(id_carta) {
-            let colorElegido = null;
-            if(id_carta.startsWith('W_')) {
-                colorElegido = prompt("Wild card! Choose: R, B, G, Y").toUpperCase();
-            }
-            socket.emit('jugar_carta', { jugador_id: miNumeroJugador, carta_id: id_carta, color_elegido: colorElegido });
+        function iniciarPartida() {
+            socket.emit('iniciar_partida');
         }
 
-        // --- EL RECEPTOR DE TIEMPO REAL ---
-        // Esto se ejecuta mágicamente cada vez que Python grita un cambio
-        socket.on('actualizacion_estado', function(estado) {
+        // --- MANEJO DE ERRORES EN TIEMPO REAL ---
+        socket.on('error_juego', function(data) {
+            alert("❌ " + data.message);
+            socket.emit('conectarse'); // Forzar resincronización visual si hubo jugada errónea
+        });
+
+        // --- RECEPCIÓN DEL ESTADO GLOBAL ---
+        socket.on('actualizacion_estado', function(data) {
             
-            if (estado.estado === "lobby") {
-                document.getElementById('pantalla-lobby').classList.remove('hidden');
-                document.getElementById('pantalla-juego').classList.add('hidden');
+            // Si alguien reinició la partida
+            if(data.estado === "lobby") {
+                if(juegoIniciadoFlag) location.reload();
                 return;
             }
 
-            if (estado.estado === "jugando" && miNumeroJugador) {
-                document.getElementById('pantalla-lobby').classList.add('hidden');
-                document.getElementById('pantalla-juego').classList.remove('hidden');
+            if(data.estado === "jugando" || data.estado === "finalizado") {
+                juegoIniciadoFlag = true;
+                document.getElementById('controles-p1').classList.add('hidden');
+            }
+
+            // COMPROBACIÓN DE GANADOR
+            if (data.ganador) {
+                document.getElementById('game-over-modal').classList.remove('hidden');
+                const goText = document.getElementById('game-over-text');
+                const btnRestart = document.getElementById('btn-restart');
                 
-                const esMiTurno = (estado.turno_actual === miNumeroJugador);
-                const txtEstado = document.getElementById('estado-turno');
-                
-                if (esMiTurno) {
-                    txtEstado.innerText = "IT'S YOUR TURN! (Color: " + estado.color_activo + ")";
-                    txtEstado.style.color = "#2ecc71";
-                    document.getElementById('btn-robar').classList.remove('hidden');
+                if (data.ganador === miNumeroJugador) {
+                    goText.innerText = "🏆 YOU WIN! 🏆";
+                    goText.style.color = "#2ecc71";
+                    goText.style.textShadow = "0 0 30px #2ecc71";
+                    btnRestart.classList.remove('hidden');
                 } else {
-                    txtEstado.innerText = "Player " + estado.turno_actual + " is playing... (Color: " + estado.color_activo + ")";
-                    txtEstado.style.color = "#f1c40f";
-                    document.getElementById('btn-robar').classList.add('hidden');
+                    goText.innerText = `💀 PLAYER ${data.ganador} WINS 💀\nYOU LOSE`;
+                    goText.style.color = "#e74c3c";
+                    goText.style.textShadow = "0 0 30px #e74c3c";
+                    btnRestart.classList.add('hidden');
                 }
+                return;
+            }
 
-                // Renderizar carta de la mesa (versión simplificada para el ejemplo)
-                if (estado.carta_mesa) {
-                    let partes = estado.carta_mesa.split('_');
-                    let colorCss = {'R':'rojo', 'B':'azul', 'G':'verde', 'Y':'amarillo', 'W':'comodin'}[partes[0]];
-                    document.getElementById('carta-mesa').innerHTML = `<div class="carta-uno ${colorCss}">${partes[1]}</div>`;
-                }
+            // MOSTRAR BANNER DE UNO
+            const unoBanner = document.getElementById('uno-banner');
+            if (data.alguien_con_uno && !data.ganador) {
+                unoBanner.innerText = `🚨 PLAYER ${data.alguien_con_uno} HAS ONE CARD LEFT! 🚨`;
+                unoBanner.classList.remove('hidden');
+            } else {
+                unoBanner.classList.add('hidden');
+            }
 
-                // Renderizar mi mano
-                let miManoHtml = '';
-                estado.manos[miNumeroJugador].forEach(carta => {
-                    let partes = carta.split('_');
-                    let colorCss = {'R':'rojo', 'B':'azul', 'G':'verde', 'Y':'amarillo', 'W':'comodin'}[partes[0]];
-                    let click = esMiTurno ? `onclick="jugarCarta('${carta}')"` : '';
-                    miManoHtml += `<div class="carta-uno ${colorCss}" ${click}>${partes[1]}</div>`;
-                });
-                document.getElementById('mi-mano').innerHTML = miManoHtml;
+            esMiTurno = (data.turno_actual === miNumeroJugador);
+            
+            if (data.turno_actual !== turnoAnterior) {
+                haRobadoEsteTurno = false;
+                turnoAnterior = data.turno_actual;
+            }
+            
+            const txtEstado = document.getElementById('estado-turno');
+            const zonaAcciones = document.getElementById('acciones-turno');
+            const btnRobar = document.getElementById('btn-robar');
+            const btnPasar = document.getElementById('btn-pasar');
+            
+            const nombresColores = {'R': 'Red', 'B': 'Blue', 'G': 'Green', 'Y': 'Yellow', 'W': 'Wild'};
+            const nombreColorActivo = nombresColores[data.color_activo] || data.color_activo;
+
+            let infoExtra = ` <br><span style="font-size:18px; font-weight:normal; color:white;">Active Color: <b>${nombreColorActivo}</b></span>`;
+            if(data.acumulador > 0) infoExtra += `<br><span style="color:#ff5555; font-size: 22px;">WARNING! Penalty: +${data.acumulador}</span>`;
+
+            if (esMiTurno) {
+                txtEstado.innerHTML = "IT'S YOUR TURN!" + infoExtra;
+                txtEstado.style.color = "#2ecc71";
+                zonaAcciones.classList.remove('hidden');
                 
-                // Botón de reinicio global
-                if(miNumeroJugador === 1) document.getElementById('btn-reiniciar').classList.remove('hidden');
+                if (haRobadoEsteTurno) {
+                    btnRobar.classList.add('hidden');
+                    btnPasar.classList.remove('hidden');
+                } else {
+                    btnRobar.classList.remove('hidden');
+                    btnPasar.classList.add('hidden');
+                    
+                    if(data.acumulador > 0) {
+                        btnRobar.innerText = `Draw ${data.acumulador} cards`;
+                        btnRobar.style.background = "#ff5555";
+                    } else {
+                        btnRobar.innerText = "Draw Card";
+                        btnRobar.style.background = "#3498db";
+                    }
+                }
+            } else {
+                txtEstado.innerHTML = `Player ${data.turno_actual} is playing...` + infoExtra;
+                txtEstado.style.color = "#f1c40f";
+                zonaAcciones.classList.add('hidden');
+            }
+
+            // RENDERIZAR MESA
+            const contDescarte = document.getElementById('carta-en-juego-container');
+            if(data.carta_mesa) {
+                let cartaP = parsearCartaJS(data.carta_mesa, data.color_activo);
+                contDescarte.innerHTML = crearHTMLCarta(cartaP, false);
+            }
+
+            // RENDERIZAR MANO
+            const contMano = document.getElementById('mi-mano');
+            contMano.innerHTML = '';
+            if(data.manos && data.manos[miNumeroJugador]) {
+                data.manos[miNumeroJugador].forEach(cartaId => {
+                    let cartaP = parsearCartaJS(cartaId, null);
+                    contMano.innerHTML += crearHTMLCarta(cartaP, esMiTurno);
+                });
             }
         });
+
+        // --- TRADUCTOR DE CARTAS AL DISEÑO (Recrea la lógica de Python) ---
+        function parsearCartaJS(id_carta, colorActivoMesa) {
+            let partes = id_carta.split('_');
+            let color_id = partes[0];
+            let valor = partes[1];
+
+            const colores = {'R': 'rojo', 'B': 'azul', 'G': 'verde', 'Y': 'amarillo', 'W': 'comodin'};
+            const simbolos = {'Skip': 'Ø', 'Rev': '⇄', 'D2': '+2', 'D4': '+4', 'Color': '❖'};
+
+            let texto_visual = simbolos[valor] || valor;
+            let clase_color = colores[color_id] || 'comodin';
+
+            // Comodines en mesa heredan el color activo visualmente
+            if (color_id === 'W' && colorActivoMesa) {
+                clase_color = colores[colorActivoMesa] || 'comodin';
+                if (valor === 'Color') texto_visual = '';
+            }
+
+            return { id: id_carta, clase_color: clase_color, valor: texto_visual };
+        }
+
+        function crearHTMLCarta(carta, clickeable) {
+            const funcionClick = clickeable ? `onclick="prepararJugada('${carta.id}')"` : '';
+            const cursorStyle = clickeable ? 'cursor: pointer;' : 'cursor: default; transform: none;';
+            const dataValorAttr = carta.valor === '' ? 'data-valor=""' : `data-valor="${carta.valor}"`;
+            
+            return `
+                <div class="carta-uno ${carta.clase_color}" ${dataValorAttr} id="${carta.id}" ${funcionClick} style="${cursorStyle}">
+                    <span class="valor-centro">${carta.valor}</span>
+                </div>
+            `;
+        }
+
+        function ejecutarAccion(tipo) {
+            if(tipo === 'robar') {
+                haRobadoEsteTurno = true;
+                socket.emit('robar_carta', {jugador_id: miNumeroJugador});
+            } else if(tipo === 'pasar') {
+                socket.emit('pasar_turno', {jugador_id: miNumeroJugador});
+            }
+        }
+
+        function prepararJugada(carta_id) {
+            if(!esMiTurno) return;
+            if(carta_id.startsWith('W_')) {
+                cartaPendienteComodin = carta_id;
+                document.getElementById('modal-color').classList.remove('hidden');
+            } else {
+                ejecutarJugadaFinal(carta_id, null);
+            }
+        }
+
+        function cancelarColor() {
+            document.getElementById('modal-color').classList.add('hidden');
+            cartaPendienteComodin = null;
+        }
+
+        function confirmarColor(colorLetra) {
+            document.getElementById('modal-color').classList.add('hidden');
+            ejecutarJugadaFinal(cartaPendienteComodin, colorLetra);
+            cartaPendienteComodin = null;
+        }
+
+        function ejecutarJugadaFinal(carta_id, colorElegido) {
+            // Efecto visual inmediato para dar sensación de hiper-velocidad
+            const cardEl = document.getElementById(carta_id);
+            if (cardEl) {
+                const discardCont = document.getElementById('carta-en-juego-container');
+                const clone = cardEl.cloneNode(true);
+                clone.removeAttribute('onclick');
+                clone.style.cursor = 'default';
+                clone.style.transform = `rotate(${Math.random() * 20 - 10}deg)`;
+                
+                if (carta_id.startsWith('W_') && colorElegido) {
+                    const cssColors = {'R':'rojo', 'B':'azul', 'G':'verde', 'Y':'amarillo'};
+                    clone.className = `carta-uno ${cssColors[colorElegido]}`;
+                    if (carta_id.includes('Color')) {
+                        clone.querySelector('.valor-centro').innerText = '';
+                        clone.dataset.valor = '';
+                    }
+                }
+                discardCont.innerHTML = '';
+                discardCont.appendChild(clone);
+                cardEl.remove();
+            }
+
+            // Avisamos al servidor central
+            socket.emit('jugar_carta', {
+                jugador_id: miNumeroJugador, 
+                carta_id: carta_id,
+                color_elegido: colorElegido
+            });
+        }
+
+        function reiniciarJuegoGlobal() {
+            socket.emit('reiniciar_juego');
+        }
     </script>
 </body>
 </html>
